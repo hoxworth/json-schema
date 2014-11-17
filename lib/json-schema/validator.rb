@@ -487,8 +487,12 @@ module JSON
       end
     end
 
-    def fake_uuid schema
+    def fake_uuid(schema)
       @@fake_uuid_generator.call(schema)
+    end
+
+    def fake_uri_for_schema(schema)
+      URI::Generic.build(:scheme => "urn", :opaque => "uuid:#{fake_uuid(schema)}")
     end
 
     def schema_to_list(schema)
@@ -504,7 +508,7 @@ module JSON
       if schema.is_a?(String)
         begin
           # Build a fake URI for this
-          schema_uri = URI.parse(fake_uuid(schema))
+          schema_uri = fake_uri_for_schema(schema)
           schema = JSON::Validator.parse(schema)
           if @options[:list] && @options[:fragment].nil?
             schema = schema_to_list(schema)
@@ -525,7 +529,7 @@ module JSON
             schema = self.class.schema_for_uri(schema_uri)
             if @options[:list] && @options[:fragment].nil?
               schema = schema_to_list(schema.schema)
-              schema_uri = URI.parse(fake_uuid(serialize(schema)))
+              schema_uri = fake_uri_for_schema(serialize(schema))
               schema = JSON::Schema.new(schema, schema_uri, @options[:version])
               Validator.add_schema(schema)
             end
@@ -536,7 +540,7 @@ module JSON
         if @options[:list] && @options[:fragment].nil?
           schema = schema_to_list(schema)
         end
-        schema_uri = URI.parse(fake_uuid(serialize(schema)))
+        schema_uri = fake_uri_for_schema(serialize(schema))
         schema = JSON::Schema.new(schema,schema_uri,@options[:version])
         Validator.add_schema(schema)
       else
