@@ -25,8 +25,7 @@ module JSON
       :errors_as_objects => false,
       :insert_defaults => false,
       :clear_cache => true,
-      :strict => false,
-      :parse_data => true
+      :strict => false
     }
     @@validators = {}
     @@default_validator = nil
@@ -47,8 +46,9 @@ module JSON
       @validation_options[:clear_cache] = false if @options[:clear_cache] == false
 
       @@mutex.synchronize { @base_schema = initialize_schema(schema_data) }
+      # TODO cleanup when support for inserting defaults is dropped
       @original_data = data
-      @data = initialize_data(data)
+      @data = data
       @@mutex.synchronize { build_schemas(@base_schema) }
 
       # validate the schema, if requested
@@ -249,28 +249,12 @@ module JSON
         end
       end
 
-      def validate_json(schema, data, opts={})
-        validate(schema, data, opts.merge(:json => true))
-      end
-
-      def validate_uri(schema, data, opts={})
-        validate(schema, data, opts.merge(:uri => true))
-      end
-
       def validate!(schema, data,opts={})
         validator = JSON::Validator.new(schema, data, opts)
         validator.validate
         return true
       end
       alias_method 'validate2', 'validate!'
-
-      def validate_json!(schema, data, opts={})
-        validate!(schema, data, opts.merge(:json => true))
-      end
-
-      def validate_uri!(schema, data, opts={})
-        validate!(schema, data, opts.merge(:uri => true))
-      end
 
       def fully_validate(schema, data, opts={})
         opts[:record_errors] = true
@@ -282,14 +266,6 @@ module JSON
         data = schema
         schema = JSON::Validator.validator_for_name(opts[:version]).metaschema
         fully_validate(schema, data, opts)
-      end
-
-      def fully_validate_json(schema, data, opts={})
-        fully_validate(schema, data, opts.merge(:json => true))
-      end
-
-      def fully_validate_uri(schema, data, opts={})
-        fully_validate(schema, data, opts.merge(:uri => true))
       end
 
       def schema_reader
@@ -374,13 +350,13 @@ module JSON
       def register_format_validator(format, validation_proc, versions = ["draft1", "draft2", "draft3", "draft4"])
         custom_format_validator = JSON::Schema::CustomFormat.new(validation_proc)
         validators_for_names(versions).each do |validator|
-          validator.formats[format.to_s] = custom_format_validator
+          validator.formats[format] = custom_format_validator
         end
       end
 
       def deregister_format_validator(format, versions = ["draft1", "draft2", "draft3", "draft4"])
         validators_for_names(versions).each do |validator|
-          validator.formats[format.to_s] = validator.default_formats[format.to_s]
+          validator.formats[format] = validator.default_formats[format]
         end
       end
 
@@ -398,7 +374,7 @@ module JSON
         case destination
         when Hash
           source.each do |key, source_value|
-            destination_value = destination[key] || destination[key.to_sym]
+            destination_value = destination[key]
             if destination_value.nil?
               destination[key] = source_value
             else
@@ -456,7 +432,6 @@ module JSON
           schema_uri = Util::URI.normalized_uri(schema)
           if !self.class.schema_loaded?(schema_uri)
             schema = @options[:schema_reader].read(schema_uri)
-            schema = JSON::Schema.stringify(schema)
 
             if @options[:list] && @options[:fragment].nil?
               schema = schema.to_array_schema
@@ -475,7 +450,6 @@ module JSON
         end
       elsif schema.is_a?(Hash)
         schema_uri = Addressable::URI.parse(fake_uuid(serialize(schema)))
-        schema = JSON::Schema.stringify(schema)
         schema = JSON::Schema.new(schema, schema_uri, @options[:version])
         if @options[:list] && @options[:fragment].nil?
           schema = schema.to_array_schema
@@ -486,29 +460,6 @@ module JSON
       end
 
       schema
-    end
-
-    def initialize_data(data)
-      if @options[:parse_data]
-        if @options[:json]
-          data = JSON::Validator.parse(data)
-        elsif @options[:uri]
-          json_uri = Util::URI.normalized_uri(data)
-          data = JSON::Validator.parse(custom_open(json_uri))
-        elsif data.is_a?(String)
-          begin
-            data = JSON::Validator.parse(data)
-          rescue
-            begin
-              json_uri = Util::URI.normalized_uri(data)
-              data = JSON::Validator.parse(custom_open(json_uri))
-            rescue
-              # Silently discard the error - the data will not change
-            end
-          end
-        end
-      end
-      JSON::Schema.stringify(data)
     end
 
     def custom_open(uri)
